@@ -1,5 +1,6 @@
 module Audio
-  ( readPitch,
+  ( ADSR (ADSR),
+    readPitch,
     freq,
     pitchFreq,
     pitch,
@@ -25,14 +26,41 @@ type Time = Float
 
 type Wave = [Float]
 
-freq :: Hz -> Amplitude -> SampleRate -> Time -> Wave
-freq hz a sr t = zipWith (*) wave weights
+data ADSR
+  = ADSR
+      AttackT
+      DecayT
+      SustainT
+      SustainL
+      ReleaseT
+  deriving (Show, Eq)
+
+type AttackT = Float
+
+type DecayT = Float
+
+type SustainT = Float
+
+type SustainL = Float
+
+type ReleaseT = Float
+
+adsrWeights :: AttackT -> DecayT -> SustainT -> SustainL -> ReleaseT -> [Float]
+adsrWeights at dt st sl rt = mconcat [attack, decay, sustain, release]
   where
-    samples = sr * t
-    ts = [0 .. samples]
+    attack = take (round at) . map (/ at) $ [0 ..]
+    decay = take (round dt) . map (\x -> 1 + negate (1 - sl) * x / dt) $ [0 ..]
+    sustain = replicate (round st) sl
+    release = take (round rt) . map (\x -> sl + negate sl * x / rt) $ [0 ..]
+
+freq :: Hz -> Amplitude -> SampleRate -> ADSR -> Wave
+freq hz a sr (ADSR at dt st sl rt) = zipWith (*) wave weights
+  where
+    ts = [0 .. sr * sum [at, dt, st, sl, rt]]
     step = hz * 2 * pi / sr
     wave = map (sin . (* step)) ts
-    weights = map (* a) (adsrWeights (0.2 * samples) (0.2 * samples) (0.4 * samples) 0.5 (0.2 * samples))
+    adsr = adsrWeights (at * sr) (dt * sr) (st * sr) sl (rt * sr)
+    weights = map (* a) (adsrWeights (at * sr) (dt * sr) (st * sr) 0.5 (sl * sr))
 
 data Semitone = C | Cs | D | Eb | E | F | Fs | G | Gs | A | Bb | B
   deriving (Eq, Ord, Enum, Bounded)
@@ -105,26 +133,8 @@ pitchFreq p = f * (a ** fromIntegral n)
     f = pitchStandardFreq
     a = 2 ** (1 / 12)
 
-pitch :: Pitch -> Amplitude -> SampleRate -> Time -> Wave
+pitch :: Pitch -> Amplitude -> SampleRate -> ADSR -> Wave
 pitch p = freq (pitchFreq p)
-
-type AttackT = Float
-
-type DecayT = Float
-
-type SustainT = Float
-
-type SustainL = Float
-
-type ReleaseT = Float
-
-adsrWeights :: AttackT -> DecayT -> SustainT -> SustainL -> ReleaseT -> [Float]
-adsrWeights at dt st sl rt = mconcat [attack, decay, sustain, release]
-  where
-    attack = take (round at) . map (/ at) $ [0 ..]
-    decay = take (round dt) . map (\x -> 1 + negate (1 - sl) * x / dt) $ [0 ..]
-    sustain = replicate (round st) sl
-    release = take (round rt) . map (\x -> sl + negate sl * x / rt) $ [0 ..]
 
 saveFile :: FilePath -> [Wave] -> IO ()
 saveFile filePath =

@@ -9,17 +9,34 @@ import qualified System.Process as P
 newtype Opts = Opts Command
 
 data Command
-  = Freq FilePath Hz SampleRate Duration
-  | Pitch FilePath Pitch SampleRate Duration
+  = Freq FilePath Hz SampleRate ADSR
+  | Pitch FilePath Pitch SampleRate ADSR
   deriving (Show, Eq)
 
 type Hz = Float
 
 type SampleRate = Float
 
-type Duration = Float
-
 type Pitch = String
+
+type AttackT = Float
+
+type DecayT = Float
+
+type SustainT = Float
+
+type SustainL = Float
+
+type ReleaseT = Float
+
+data ADSR
+  = ADSR
+      AttackT
+      DecayT
+      SustainT
+      SustainL
+      ReleaseT
+  deriving (Show, Eq)
 
 run :: IO ()
 run = do
@@ -61,7 +78,7 @@ runParser = OA.execParser optsParser
             <$> outputFileParser
             <*> hzParser
             <*> sampleRateParser
-            <*> durationParser
+            <*> adsrParser
 
     pitchCommand :: OA.Mod OA.CommandFields Command
     pitchCommand =
@@ -81,7 +98,7 @@ runParser = OA.execParser optsParser
             <$> outputFileParser
             <*> pitchParser
             <*> sampleRateParser
-            <*> durationParser
+            <*> adsrParser
 
     outputFileParser :: OA.Parser FilePath
     outputFileParser =
@@ -110,16 +127,6 @@ runParser = OA.execParser optsParser
             <> OA.help "sample rate"
         )
 
-    durationParser :: OA.Parser Duration
-    durationParser =
-      OA.option
-        OA.auto
-        ( OA.long "duration"
-            <> OA.short 'd'
-            <> OA.metavar "DURATION"
-            <> OA.help "duration"
-        )
-
     pitchParser :: OA.Parser Pitch
     pitchParser =
       OA.strOption
@@ -128,16 +135,66 @@ runParser = OA.execParser optsParser
             <> OA.help "pitch"
         )
 
+    adsrParser :: OA.Parser ADSR
+    adsrParser =
+      ADSR
+        <$> attackTParser
+        <*> decayTParser
+        <*> sustainTParser
+        <*> sustainLParser
+        <*> releaseTParser
+      where
+        attackTParser :: OA.Parser AttackT
+        attackTParser =
+          OA.option
+            OA.auto
+            ( OA.long "at"
+                <> OA.metavar "ATTACK_TIME"
+                <> OA.help "attack time"
+            )
+        decayTParser :: OA.Parser DecayT
+        decayTParser =
+          OA.option
+            OA.auto
+            ( OA.long "dt"
+                <> OA.metavar "DECAY_TIME"
+                <> OA.help "decay time"
+            )
+        sustainTParser :: OA.Parser SustainT
+        sustainTParser =
+          OA.option
+            OA.auto
+            ( OA.long "st"
+                <> OA.metavar "SUSTAIN_TIME"
+                <> OA.help "sustain time"
+            )
+        sustainLParser :: OA.Parser SustainL
+        sustainLParser =
+          OA.option
+            OA.auto
+            ( OA.long "sl"
+                <> OA.metavar "SUSTAIN_LEVEL"
+                <> OA.help "sustain level"
+            )
+        releaseTParser :: OA.Parser ReleaseT
+        releaseTParser =
+          OA.option
+            OA.auto
+            ( OA.long "rt"
+                <> OA.metavar "RELEASE_TIME"
+                <> OA.help "release time"
+            )
+
 runCommand :: Command -> IO ()
-runCommand (Freq filePath hz sr d) = do
-  let w = A.freq hz 1 sr d
+runCommand (Freq filePath hz sr (ADSR at dt st sl rt)) = do
+  let adsr = A.ADSR at dt st sl rt
+  let w = A.freq hz 1 sr adsr
   A.saveFile filePath [w]
-runCommand (Pitch filePath p sr d) = do
+runCommand (Pitch filePath p sr (ADSR at dt st sl rt)) = do
   let pitchResult = A.readPitch p
   case pitchResult of
     Left err -> print err
     Right pitch -> do
-      print pitch
-      print (A.pitchFreq pitch)
-      let w = A.pitch pitch 0.2 sr d
+      let adsr = A.ADSR at dt st sl rt
+      let w = A.pitch pitch 0.2 sr adsr
       A.saveFile filePath [w]
