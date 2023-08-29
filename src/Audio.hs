@@ -25,6 +25,15 @@ type Time = Float
 
 type Wave = [Float]
 
+freq :: Hz -> Amplitude -> SampleRate -> Time -> Wave
+freq hz a sr t = zipWith (*) wave weights
+  where
+    samples = sr * t
+    ts = [0 .. samples]
+    step = hz * 2 * pi / sr
+    wave = map (sin . (* step)) ts
+    weights = map (* a) (adsrWeights (0.2 * samples) (0.2 * samples) (0.4 * samples) 0.5 (0.2 * samples))
+
 data Semitone = C | Cs | D | Eb | E | F | Fs | G | Gs | A | Bb | B
   deriving (Eq, Ord, Enum, Bounded)
 
@@ -76,9 +85,6 @@ readPitch s = do
   octave <- readOctave octaveStr
   return $ Pitch semitone octave
 
-freq :: Hz -> Amplitude -> SampleRate -> Time -> Wave
-freq hz a sr t = map ((* a) . sin . (* (hz * 2 * pi / sr))) [0 .. sr * t]
-
 step :: Pitch -> Pitch -> Int
 step (Pitch n o) (Pitch n' o') = n'' + o'' * octaveSize
   where
@@ -101,6 +107,24 @@ pitchFreq p = f * (a ** fromIntegral n)
 
 pitch :: Pitch -> Amplitude -> SampleRate -> Time -> Wave
 pitch p = freq (pitchFreq p)
+
+type AttackT = Float
+
+type DecayT = Float
+
+type SustainT = Float
+
+type SustainL = Float
+
+type ReleaseT = Float
+
+adsrWeights :: AttackT -> DecayT -> SustainT -> SustainL -> ReleaseT -> [Float]
+adsrWeights at dt st sl rt = mconcat [attack, decay, sustain, release]
+  where
+    attack = take (round at) . map (/ at) $ [0 ..]
+    decay = take (round dt) . map (\x -> 1 + negate (1 - sl) * x / dt) $ [0 ..]
+    sustain = replicate (round st) sl
+    release = take (round rt) . map (\x -> sl + negate sl * x / rt) $ [0 ..]
 
 saveFile :: FilePath -> [Wave] -> IO ()
 saveFile filePath =

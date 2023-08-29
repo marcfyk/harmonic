@@ -139,5 +139,5 @@ runCommand (Pitch filePath p sr d) = do
     Right pitch -> do
       print pitch
       print (A.pitchFreq pitch)
-      let w = A.pitch pitch 1 sr d
+      let w = A.pitch pitch 0.2 sr d
       A.saveFile filePath [w]
