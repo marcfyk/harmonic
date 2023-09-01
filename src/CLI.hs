@@ -1,16 +1,14 @@
 module CLI (run) where
 
 import qualified Audio as A
-import qualified Data.ByteString.Builder as BSB
-import qualified Data.ByteString.Lazy as BS
 import qualified Options.Applicative as OA
-import qualified System.Process as P
 
 newtype Opts = Opts Command
 
 data Command
   = Freq FilePath Hz SampleRate ADSR
   | Pitch FilePath Pitch SampleRate ADSR
+  | Octave FilePath OctaveN SampleRate ADSR
   deriving (Show, Eq)
 
 type Hz = Float
@@ -28,6 +26,8 @@ type SustainT = Float
 type SustainL = Float
 
 type ReleaseT = Float
+
+type OctaveN = Integer
 
 data ADSR
   = ADSR
@@ -58,6 +58,7 @@ runParser = OA.execParser optsParser
         <$> OA.subparser
           ( freqCommand
               <> pitchCommand
+              <> octaveCommand
           )
 
     freqCommand :: OA.Mod OA.CommandFields Command
@@ -99,6 +100,35 @@ runParser = OA.execParser optsParser
             <*> pitchParser
             <*> sampleRateParser
             <*> adsrParser
+
+    octaveCommand :: OA.Mod OA.CommandFields Command
+    octaveCommand =
+      OA.command
+        "octave"
+        ( OA.info
+            (parser OA.<**> OA.helper)
+            ( OA.fullDesc
+                <> OA.progDesc ""
+                <> OA.header ""
+            )
+        )
+      where
+        parser :: OA.Parser Command
+        parser =
+          Octave
+            <$> outputFileParser
+            <*> octaveNParser
+            <*> sampleRateParser
+            <*> adsrParser
+
+        octaveNParser :: OA.Parser OctaveN
+        octaveNParser =
+          OA.option
+            OA.auto
+            ( OA.long "octave"
+                <> OA.metavar "OCTAVE"
+                <> OA.help "octave"
+            )
 
     outputFileParser :: OA.Parser FilePath
     outputFileParser =
@@ -186,15 +216,29 @@ runParser = OA.execParser optsParser
             )
 
 runCommand :: Command -> IO ()
-runCommand (Freq filePath hz sr (ADSR at dt st sl rt)) = do
-  let adsr = A.ADSR at dt st sl rt
-  let w = A.freq hz 1 sr adsr
+runCommand (Freq filePath hz sr adsr) = runCommandFreq filePath hz sr adsr
+runCommand (Pitch filePath p sr adsr) = runCommandPitch filePath p sr adsr
+runCommand (Octave filePath o sr adsr) = runCommandOctave filePath o sr adsr
+
+runCommandFreq :: FilePath -> Hz -> SampleRate -> ADSR -> IO ()
+runCommandFreq filePath hz sr adsr = do
+  let w = A.freq hz 1 sr (readADSR adsr)
   A.saveFile filePath [w]
-runCommand (Pitch filePath p sr (ADSR at dt st sl rt)) = do
+
+runCommandPitch :: FilePath -> Pitch -> SampleRate -> ADSR -> IO ()
+runCommandPitch filePath p sr adsr = do
   let pitchResult = A.readPitch p
   case pitchResult of
     Left err -> print err
     Right pitch -> do
-      let adsr = A.ADSR at dt st sl rt
-      let w = A.pitch pitch 0.2 sr adsr
+      let w = A.pitch pitch 0.2 sr (readADSR adsr)
       A.saveFile filePath [w]
+
+runCommandOctave :: FilePath -> OctaveN -> SampleRate -> ADSR -> IO ()
+runCommandOctave filePath o sr adsr = do
+  let octave = A.octave o
+  let ws = [A.pitch p 0.2 sr (readADSR adsr) | p <- octave]
+  A.saveFile filePath ws
+
+readADSR :: ADSR -> A.ADSR
+readADSR (ADSR at dt st sl rt) = A.ADSR at dt st sl rt

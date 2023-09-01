@@ -4,6 +4,8 @@ module Audio
     freq,
     pitchFreq,
     pitch,
+    scale,
+    octave,
     saveFile,
   )
 where
@@ -12,17 +14,13 @@ import qualified Data.ByteString.Builder as BSB
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.Char as C
 import Options.Applicative as OA
-import qualified System.Process as SP
 import qualified Text.Read as TR
-import qualified Text.Read.Lex as C
 
 type Amplitude = Float
 
 type Hz = Float
 
 type SampleRate = Float
-
-type Time = Float
 
 type Wave = [Float]
 
@@ -54,13 +52,13 @@ adsrWeights at dt st sl rt = mconcat [attack, decay, sustain, release]
     release = take (round rt) . map (\x -> sl + negate sl * x / rt) $ [0 ..]
 
 freq :: Hz -> Amplitude -> SampleRate -> ADSR -> Wave
-freq hz a sr (ADSR at dt st sl rt) = zipWith (*) wave weights
+freq hz a sr (ADSR at dt st sl rt) = zipWith (*) w weights
   where
     ts = [0 .. sr * sum [at, dt, st, sl, rt]]
-    step = hz * 2 * pi / sr
-    wave = map (sin . (* step)) ts
+    s = hz * 2 * pi / sr
+    w = map (sin . (* s)) ts
     adsr = adsrWeights (at * sr) (dt * sr) (st * sr) sl (rt * sr)
-    weights = map (* a) (adsrWeights (at * sr) (dt * sr) (st * sr) 0.5 (sl * sr))
+    weights = map (* a) adsr
 
 data Semitone = C | Cs | D | Eb | E | F | Fs | G | Gs | A | Bb | B
   deriving (Eq, Ord, Enum, Bounded)
@@ -96,7 +94,7 @@ readSemitone "Bb" = Right Bb
 readSemitone "B" = Right B
 readSemitone s = Left . ParserError $ s
 
-type Octave = Int
+type Octave = Integer
 
 readOctave :: String -> Either ParserError Octave
 readOctave s = case TR.readMaybe s of
@@ -106,19 +104,19 @@ readOctave s = case TR.readMaybe s of
 data Pitch = Pitch Semitone Octave deriving (Show, Eq)
 
 readPitch :: String -> Either ParserError Pitch
-readPitch s = do
-  let semitoneStr = takeWhile (liftA2 (||) C.isLetter (== '#')) s
-  let octaveStr = dropWhile (liftA2 (||) C.isLetter (== '#')) s
-  semitone <- readSemitone semitoneStr
-  octave <- readOctave octaveStr
-  return $ Pitch semitone octave
+readPitch p = do
+  let semitoneStr = takeWhile (liftA2 (||) C.isLetter (== '#')) p
+  let octaveStr = dropWhile (liftA2 (||) C.isLetter (== '#')) p
+  s <- readSemitone semitoneStr
+  o <- readOctave octaveStr
+  return $ Pitch s o
 
-step :: Pitch -> Pitch -> Int
+step :: Pitch -> Pitch -> Integer
 step (Pitch n o) (Pitch n' o') = n'' + o'' * octaveSize
   where
-    n'' = fromEnum n' - fromEnum n
+    n'' = toInteger $ fromEnum n' - fromEnum n
     o'' = o' - o
-    octaveSize = 1 + fromEnum (maxBound :: Semitone)
+    octaveSize = toInteger $ 1 + fromEnum (maxBound :: Semitone)
 
 pitchStandard :: Pitch
 pitchStandard = Pitch A 4
@@ -135,6 +133,12 @@ pitchFreq p = f * (a ** fromIntegral n)
 
 pitch :: Pitch -> Amplitude -> SampleRate -> ADSR -> Wave
 pitch p = freq (pitchFreq p)
+
+scale :: [Semitone]
+scale = [minBound :: Semitone .. maxBound :: Semitone]
+
+octave :: Octave -> [Pitch]
+octave o = [Pitch s o | s <- scale]
 
 saveFile :: FilePath -> [Wave] -> IO ()
 saveFile filePath =
