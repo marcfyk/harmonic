@@ -1,10 +1,7 @@
 module CLI (run) where
 
 import qualified Audio as A
-import qualified Data.ByteString.Builder as BSB
-import qualified Data.ByteString.Lazy as BS
 import qualified Options.Applicative as OA
-import qualified System.Process as P
 
 newtype Opts = Opts Command
 
@@ -128,7 +125,10 @@ runParser = OA.execParser optsParser
         octaveNParser =
           OA.option
             OA.auto
-            (OA.long "octave" <> OA.metavar "OCTAVE" <> OA.help "octave")
+            ( OA.long "octave"
+                <> OA.metavar "OCTAVE"
+                <> OA.help "octave"
+            )
 
     outputFileParser :: OA.Parser FilePath
     outputFileParser =
