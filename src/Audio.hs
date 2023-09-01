@@ -4,6 +4,8 @@ module Audio
     freq,
     pitchFreq,
     pitch,
+    scale,
+    octave,
     saveFile,
   )
 where
@@ -96,7 +98,7 @@ readSemitone "Bb" = Right Bb
 readSemitone "B" = Right B
 readSemitone s = Left . ParserError $ s
 
-type Octave = Int
+type Octave = Integer
 
 readOctave :: String -> Either ParserError Octave
 readOctave s = case TR.readMaybe s of
@@ -113,12 +115,12 @@ readPitch s = do
   octave <- readOctave octaveStr
   return $ Pitch semitone octave
 
-step :: Pitch -> Pitch -> Int
+step :: Pitch -> Pitch -> Integer
 step (Pitch n o) (Pitch n' o') = n'' + o'' * octaveSize
   where
-    n'' = fromEnum n' - fromEnum n
+    n'' = toInteger $ fromEnum n' - fromEnum n
     o'' = o' - o
-    octaveSize = 1 + fromEnum (maxBound :: Semitone)
+    octaveSize = toInteger $ 1 + fromEnum (maxBound :: Semitone)
 
 pitchStandard :: Pitch
 pitchStandard = Pitch A 4
@@ -135,6 +137,12 @@ pitchFreq p = f * (a ** fromIntegral n)
 
 pitch :: Pitch -> Amplitude -> SampleRate -> ADSR -> Wave
 pitch p = freq (pitchFreq p)
+
+scale :: [Semitone]
+scale = [minBound :: Semitone .. maxBound :: Semitone]
+
+octave :: Octave -> [Pitch]
+octave o = [Pitch s o | s <- scale]
 
 saveFile :: FilePath -> [Wave] -> IO ()
 saveFile filePath =
